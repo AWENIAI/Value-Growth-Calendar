@@ -1,0 +1,7 @@
+{
+  "name": "value-growth-calendar",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "update-strategy-a": "node scripts/update-strategy-a.mjs", "generate": "node scripts/generate-calendar.mjs" }
+}
