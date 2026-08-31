@@ -1,10 +1,15 @@
 name: Update Value Growth Calendar
 on:
   schedule:
-    # 策略 A：每个交易日北京时间 15:15 执行，长期重复。
-    # 未经阿文明确允许，不得停用、删除或改动此定时任务。
+    # 策略 A 主执行：每个交易日北京时间 15:15，长期重复。
+    # 未经阿文明确允许，不得停用、删除或改动 15:15 主执行任务。
     # GitHub Actions cron 使用 UTC；07:15 UTC = 15:15 Asia/Shanghai。
     - cron: '15 7 * * 1-5'
+    # 自动补跑：GitHub schedule 偶发漏触发/延迟时，用同一套幂等脚本补救。
+    # 07:30/07:45/08:00 UTC = 北京时间 15:30/15:45/16:00。
+    - cron: '30 7 * * 1-5'
+    - cron: '45 7 * * 1-5'
+    - cron: '0 8 * * 1-5'
   workflow_dispatch:
 permissions:
   contents: write
