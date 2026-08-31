@@ -1,5 +1,147 @@
 import fs from 'node:fs';
-const api='http://hq.cnindex.com.cn/market/market/getIndexDailyDataWithDataFormat';
-const get=async code=>{const e=new Date().toISOString().slice(0,10),s=new Date(Date.now()-180*86400000).toISOString().slice(0,10),r=await fetch(`${api}?indexCode=${code}&startDate=${s}&endDate=${e}&frequency=day`);if(!r.ok)throw Error(`${code} HTTP ${r.status}`);const {data}=await r.json(), ex={'480080':['成长100R','CNIG100 TRI'],'480081':['价值100R','CNIV100 TRI']}[code];if(data?.indexCode!==code||data.indexName!==ex[0]||data.indexEName!==ex[1])throw Error(`${code} TRI口径校验失败`);const i=data.item.indexOf('close');return Object.fromEntries(data.data.filter(x=>x[i]!=null).map(x=>[x[0],Number(x[i])]));};
-const event=(title,description,date)=>({market:'CN',level:'high',category:'Strategy A',title,start:`${date}T15:10:00+08:00`,end:`${date}T15:15:00+08:00`,location:'中国',assets:['成长100R','价值100R'],sourceUrl:'https://www.cnindex.com.cn/',strategyDescription:description});
-try{const[g,v]=await Promise.all([get('480080'),get('480081')]),ds=Object.keys(g).filter(d=>d in v).sort();if(ds.length<21)throw Error('共同有效交易日不足21个');const date=ds.at(-1),previous=ds.at(-2),old=ds.at(-21),rg=g[date]/g[old]-1,rv=v[date]/v[old]-1,d=(rg-rv)*100,s=JSON.parse(fs.readFileSync('data/strategy-a-state.json')),p=s.currentPosition;if(!['VALUE','GROWTH'].includes(p))throw Error('当前持仓状态无效');const t=p==='VALUE'&&d>1?'GROWTH':p==='GROWTH'&&d<-1?'VALUE':p,r=t!==p?(t==='GROWTH'?'从价值切换到成长':'从成长切换到价值'):(p==='VALUE'?'保持当前价值':'保持当前成长'),holding=t==='GROWTH'?'成长100R':'价值100R',displayResult=t!==p?r:`保持当前“${holding}”持仓`,title=`💰 策略A-成长100R价值100R轮动：${displayResult}`,reason=t!==p?`成长100R的20日收益减去价值100R的20日收益，得到${d>=0?'+':''}${d.toFixed(4)}pp。因此在下一交易日从“${p==='VALUE'?'价值':'成长'}”切换至“${t==='GROWTH'?'成长':'价值'}”。`:'因此保持当前持仓。',desc=`成长100R（480080）：${g[date].toFixed(4)}      ${(g[date]/g[previous]-1)*100>=0?'+':''}${((g[date]/g[previous]-1)*100).toFixed(4)}%\n价值100R（480081）：${v[date].toFixed(4)}      ${(v[date]/v[previous]-1)*100>=0?'+':''}${((v[date]/v[previous]-1)*100).toFixed(4)}%\n\n成长20日累计收益：${(rg*100).toFixed(4)}%\n价值20日累计收益：${(rv*100).toFixed(4)}%\n相对收益差：${d>=0?'+':''}${d.toFixed(4)}pp\n\n理由：${reason}`;fs.writeFileSync('data/strategy-a.json',JSON.stringify([event(title,desc,date)],null,2)+'\n');fs.writeFileSync('data/strategy-a-state.json',JSON.stringify({currentPosition:t,tradeCount:s.tradeCount+Number(t!==p),lastSignalDate:date,lastResult:r},null,2)+'\n');console.log(title)}catch(e){const date=new Date().toISOString().slice(0,10);fs.writeFileSync('data/strategy-a.json',JSON.stringify([event('💰 策略A-成长100R价值100R轮动：数据错误无结果',`结果：数据错误无结果\n\n数据口径：480080 / 480081\n\n理由：${e.message}`,date)],null,2)+'\n');console.error(e.message);process.exitCode=1}
+
+const api = 'http://hq.cnindex.com.cn/market/market/getIndexDailyDataWithDataFormat';
+
+const indexMeta = {
+  '480080': ['成长100R', 'CNIG100 TRI'],
+  '480081': ['价值100R', 'CNIV100 TRI'],
+  '980080': ['成长100', 'CNIG100'],
+  '980081': ['价值100', 'CNIV100'],
+};
+
+const codePairs = {
+  growth: ['480080', '980080'],
+  value: ['480081', '980081'],
+};
+
+const get = async code => {
+  const endDate = new Date().toISOString().slice(0, 10);
+  const startDate = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+  const response = await fetch(`${api}?indexCode=${code}&startDate=${startDate}&endDate=${endDate}&frequency=day`);
+
+  if (!response.ok) {
+    throw Error(`${code} HTTP ${response.status}`);
+  }
+
+  const { data } = await response.json();
+  const expected = indexMeta[code];
+
+  if (!expected) {
+    throw Error(`${code} 未配置 TRI 口径校验`);
+  }
+
+  if (data?.indexCode !== code || data.indexName !== expected[0] || data.indexEName !== expected[1]) {
+    throw Error(`${code} TRI口径校验失败`);
+  }
+
+  const closeIndex = data.item.indexOf('close');
+
+  if (closeIndex < 0) {
+    throw Error(`${code} 缺少 close 字段`);
+  }
+
+  return Object.fromEntries(data.data.filter(row => row[closeIndex] != null).map(row => [row[0], Number(row[closeIndex])]));
+};
+
+const getWithFallback = async (label, codes) => {
+  const errors = [];
+
+  for (const code of codes) {
+    try {
+      const series = await get(code);
+      return { code, series };
+    } catch (error) {
+      errors.push(`${code}: ${error.message}`);
+    }
+  }
+
+  throw Error(`${label} 数据获取失败（已尝试 ${codes.join(' / ')}）：${errors.join('；')}`);
+};
+
+const event = (title, description, date) => ({
+  market: 'CN',
+  level: 'high',
+  category: 'Strategy A',
+  title,
+  start: `${date}T15:10:00+08:00`,
+  end: `${date}T15:15:00+08:00`,
+  location: '中国',
+  assets: ['成长100R', '价值100R'],
+  sourceUrl: 'https://www.cnindex.com.cn/',
+  strategyDescription: description,
+});
+
+try {
+  const [growthResult, valueResult] = await Promise.all([
+    getWithFallback('成长100R', codePairs.growth),
+    getWithFallback('价值100R', codePairs.value),
+  ]);
+  const g = growthResult.series;
+  const v = valueResult.series;
+  const ds = Object.keys(g).filter(date => date in v).sort();
+
+  if (ds.length < 21) {
+    throw Error('共同有效交易日不足21个');
+  }
+
+  const date = ds.at(-1);
+  const previous = ds.at(-2);
+  const old = ds.at(-21);
+  const rg = g[date] / g[old] - 1;
+  const rv = v[date] / v[old] - 1;
+  const d = (rg - rv) * 100;
+  const state = JSON.parse(fs.readFileSync('data/strategy-a-state.json'));
+  const previousPosition = state.currentPosition;
+
+  if (!['VALUE', 'GROWTH'].includes(previousPosition)) {
+    throw Error('当前持仓状态无效');
+  }
+
+  const targetPosition =
+    previousPosition === 'VALUE' && d > 1
+      ? 'GROWTH'
+      : previousPosition === 'GROWTH' && d < -1
+        ? 'VALUE'
+        : previousPosition;
+
+  const result =
+    targetPosition !== previousPosition
+      ? targetPosition === 'GROWTH'
+        ? '从价值切换到成长'
+        : '从成长切换到价值'
+      : previousPosition === 'VALUE'
+        ? '保持当前价值'
+        : '保持当前成长';
+
+  const holding = targetPosition === 'GROWTH' ? '成长100R' : '价值100R';
+  const displayResult = targetPosition !== previousPosition ? result : `保持当前“${holding}”持仓`;
+  const title = `💰 策略A-成长100R价值100R轮动：${displayResult}`;
+  const reason =
+    targetPosition !== previousPosition
+      ? `成长100R的20日收益减去价值100R的20日收益，得到${d >= 0 ? '+' : ''}${d.toFixed(4)}pp。因此在下一交易日从“${previousPosition === 'VALUE' ? '价值' : '成长'}”切换至“${targetPosition === 'GROWTH' ? '成长' : '价值'}”。`
+      : '因此保持当前持仓。';
+  const sourceLine =
+    growthResult.code === '480080' && valueResult.code === '480081'
+      ? '数据口径：480080 / 480081'
+      : `数据口径：${growthResult.code} / ${valueResult.code}（480080/480081 取数失败时使用 980080/980081 备用代码；备用代码为价格指数口径）`;
+  const desc = `成长100R（${growthResult.code}）：${g[date].toFixed(4)}      ${((g[date] / g[previous] - 1) * 100) >= 0 ? '+' : ''}${((g[date] / g[previous] - 1) * 100).toFixed(4)}%\n价值100R（${valueResult.code}）：${v[date].toFixed(4)}      ${((v[date] / v[previous] - 1) * 100) >= 0 ? '+' : ''}${((v[date] / v[previous] - 1) * 100).toFixed(4)}%\n${sourceLine}\n\n成长20日累计收益：${(rg * 100).toFixed(4)}%\n价值20日累计收益：${(rv * 100).toFixed(4)}%\n相对收益差：${d >= 0 ? '+' : ''}${d.toFixed(4)}pp\n\n理由：${reason}`;
+
+  fs.writeFileSync('data/strategy-a.json', JSON.stringify([event(title, desc, date)], null, 2) + '\n');
+  fs.writeFileSync('data/strategy-a-state.json', JSON.stringify({
+    currentPosition: targetPosition,
+    tradeCount: state.tradeCount + Number(targetPosition !== previousPosition),
+    lastSignalDate: date,
+    lastResult: result,
+  }, null, 2) + '\n');
+  console.log(title);
+  console.log(sourceLine);
+} catch (error) {
+  const date = new Date().toISOString().slice(0, 10);
+  fs.writeFileSync('data/strategy-a.json', JSON.stringify([event(
+    '💰 策略A-成长100R价值100R轮动：数据错误无结果',
+    `结果：数据错误无结果\n\n数据口径：480080 / 480081；备用代码：980080 / 980081\n\n理由：${error.message}`,
+    date,
+  )], null, 2) + '\n');
+  console.error(error.message);
+  process.exitCode = 1;
+}
