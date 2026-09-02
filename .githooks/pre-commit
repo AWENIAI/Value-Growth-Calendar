@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="$(git rev-parse --show-toplevel)"
+permit_file="/opt/awen-calendar-change-permit"
+
+parent_cmd="$(ps -o command= -p "\${PPID}" 2>/dev/null || true)"
+case "$parent_cmd" in
+  *run-update.sh*|*calendar-git-sync.sh*)
+    exit 0
+    ;;
+esac
+
+if [ ! -f "$permit_file" ]; then
+  echo "BLOCKED: missing $permit_file" >&2
+  echo "AI/Codex/manual project commits require explicit Awen confirmation." >&2
+  exit 1
+fi
+
+if ! grep -Fqx "$project_dir" "$permit_file"; then
+  echo "BLOCKED: permit file does not include $project_dir" >&2
+  exit 1
+fi
+
+if ! find "$permit_file" -mmin -180 | grep -q .; then
+  echo "BLOCKED: permit file is older than 180 minutes" >&2
+  exit 1
+fi
+
+exit 0
