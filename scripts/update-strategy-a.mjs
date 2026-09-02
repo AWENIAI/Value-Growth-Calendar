@@ -14,6 +14,17 @@ const codePairs = {
   value: ['480081', '980081'],
 };
 
+const beijingToday = () => {
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const dict = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return dict.year + '-' + dict.month + '-' + dict.day;
+};
+
 const get = async code => {
   const endDate = new Date().toISOString().slice(0, 10);
   const startDate = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
@@ -27,11 +38,11 @@ const get = async code => {
   const expected = indexMeta[code];
 
   if (!expected) {
-    throw Error(`${code} 未配置 TRI 口径校验`);
+    throw Error(`${code} 未配置口径校验`);
   }
 
   if (data?.indexCode !== code || data.indexName !== expected[0] || data.indexEName !== expected[1]) {
-    throw Error(`${code} TRI口径校验失败`);
+    throw Error(`${code} 口径校验失败`);
   }
 
   const closeIndex = data.item.indexOf('close');
@@ -63,8 +74,8 @@ const event = (title, description, date) => ({
   level: 'high',
   category: 'Strategy A',
   title,
-  start: `${date}T15:10:00+08:00`,
-  end: `${date}T15:15:00+08:00`,
+  start: `${date}T15:20:00+08:00`,
+  end: `${date}T15:25:00+08:00`,
   location: '中国',
   assets: ['成长100R', '价值100R'],
   sourceUrl: 'https://www.cnindex.com.cn/',
@@ -85,6 +96,8 @@ try {
   }
 
   const date = ds.at(-1);
+  const eventDate = date < beijingToday() ? beijingToday() : date;
+  const isStaleData = eventDate !== date;
   const previous = ds.at(-2);
   const old = ds.at(-21);
   const rg = g[date] / g[old] - 1;
@@ -115,28 +128,31 @@ try {
 
   const holding = targetPosition === 'GROWTH' ? '成长100R' : '价值100R';
   const displayResult = targetPosition !== previousPosition ? result : `保持当前“${holding}”持仓`;
-  const title = `💰 策略A-成长100R价值100R轮动：${displayResult}`;
-  const reason =
-    targetPosition !== previousPosition
+  const title = isStaleData
+    ? `💰 策略A-成长100R价值100R轮动：数据源未更新，沿用 ${date} 信号`
+    : `💰 策略A-成长100R价值100R轮动：${displayResult}`;
+  const reason = isStaleData
+    ? `数据源尚未更新到 ${eventDate}，本次只提醒“暂无当日新信号”，不改变持仓状态。最新可用信号交易日为 ${date}。`
+    : targetPosition !== previousPosition
       ? `成长100R的20日收益减去价值100R的20日收益，得到${d >= 0 ? '+' : ''}${d.toFixed(4)}pp。因此在下一交易日从“${previousPosition === 'VALUE' ? '价值' : '成长'}”切换至“${targetPosition === 'GROWTH' ? '成长' : '价值'}”。`
       : '因此保持当前持仓。';
   const sourceLine =
     growthResult.code === '480080' && valueResult.code === '480081'
       ? '数据口径：480080 / 480081'
       : `数据口径：${growthResult.code} / ${valueResult.code}（480080/480081 取数失败时使用 980080/980081 备用代码；备用代码为价格指数口径）`;
-  const desc = `成长100R（${growthResult.code}）：${g[date].toFixed(4)}      ${((g[date] / g[previous] - 1) * 100) >= 0 ? '+' : ''}${((g[date] / g[previous] - 1) * 100).toFixed(4)}%\n价值100R（${valueResult.code}）：${v[date].toFixed(4)}      ${((v[date] / v[previous] - 1) * 100) >= 0 ? '+' : ''}${((v[date] / v[previous] - 1) * 100).toFixed(4)}%\n${sourceLine}\n\n成长20日累计收益：${(rg * 100).toFixed(4)}%\n价值20日累计收益：${(rv * 100).toFixed(4)}%\n相对收益差：${d >= 0 ? '+' : ''}${d.toFixed(4)}pp\n\n理由：${reason}`;
+  const desc = `信号交易日：${date}\n日历提醒日：${eventDate}\n${isStaleData ? '状态：数据源尚未更新到今天，本次不产生新换仓信号。\n\n' : ''}成长100R（${growthResult.code}）：${g[date].toFixed(4)}      ${((g[date] / g[previous] - 1) * 100) >= 0 ? '+' : ''}${((g[date] / g[previous] - 1) * 100).toFixed(4)}%\n价值100R（${valueResult.code}）：${v[date].toFixed(4)}      ${((v[date] / v[previous] - 1) * 100) >= 0 ? '+' : ''}${((v[date] / v[previous] - 1) * 100).toFixed(4)}%\n${sourceLine}\n\n成长20日累计收益：${(rg * 100).toFixed(4)}%\n价值20日累计收益：${(rv * 100).toFixed(4)}%\n相对收益差：${d >= 0 ? '+' : ''}${d.toFixed(4)}pp\n\n理由：${reason}`;
 
-  fs.writeFileSync('data/strategy-a.json', JSON.stringify([event(title, desc, date)], null, 2) + '\n');
+  fs.writeFileSync('data/strategy-a.json', JSON.stringify([event(title, desc, eventDate)], null, 2) + '\n');
   fs.writeFileSync('data/strategy-a-state.json', JSON.stringify({
     currentPosition: targetPosition,
-    tradeCount: state.tradeCount + Number(targetPosition !== previousPosition),
+    tradeCount: state.tradeCount + Number(!isStaleData && targetPosition !== previousPosition),
     lastSignalDate: date,
-    lastResult: result,
+    lastResult: isStaleData ? '数据源未更新' : result,
   }, null, 2) + '\n');
   console.log(title);
   console.log(sourceLine);
 } catch (error) {
-  const date = new Date().toISOString().slice(0, 10);
+  const date = beijingToday();
   fs.writeFileSync('data/strategy-a.json', JSON.stringify([event(
     '💰 策略A-成长100R价值100R轮动：数据错误无结果',
     `结果：数据错误无结果\n\n数据口径：480080 / 480081；备用代码：980080 / 980081\n\n理由：${error.message}`,
