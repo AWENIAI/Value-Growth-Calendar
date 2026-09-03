@@ -3,18 +3,22 @@
  * 策略A · WorkBuddy 部署版（15日 / ±3pp 双阈值滞回相对动量轮动 · 真实阶梯成本）
  * ----------------------------------------------------------------------------
  * 部署目录：/opt/Value-Growth-Calendar-worbuddy
- * 每天收盘后（cron：0 18 * * 1-5）执行：
- *   1. 从国证官网服务端抓取 980080/980081 最新收盘（Node fetch，不受浏览器 CORS 限制）
- *   2. 追加到 worbuddy/forward/close-input.csv（本地持久化，冷启动用基础历史 xls 预热）
- *   3. 复用与本地回测 100% 一致的 runRotationBacktest 引擎算出当日信号
- *   4. 写出 docs/worbuddy/calendar.ics（苹果日历订阅）+ signal.json（网页读取）+ index.html（网页版）
+ * 每天收盘后执行（cron，建议 21:00 周一至五，待基金净值发布后）：
+ *   默认模式：从国证官网服务端抓取 980080/980081 最新收盘（Node fetch）。
+ *   NAV 模式（NAV_MODE=1）：调用 fetch_nav.py，从东财基金接口抓取实盘持有基金
+ *     027859(成长100)/026936(价值100) 净值，替代国证官网（CVM 不被反爬封、无需 Mac）。
+ *   两种模式共用同一套引擎/状态机/成本/.ics 生成逻辑，仅数据源不同。
+ *   1. 抓取最新收盘（或净值）→ 追加到 worbuddy/forward/close-input[-nav].csv
+ *   2. 复用与本地回测 100% 一致的 runRotationBacktest 引擎算出当日信号
+ *   3. 写出 docs/feed/calendar.ics（苹果日历订阅）+ signal.json（网页读取）+ index.html（网页版）
  *
  * 用法：
- *   node worbuddy/sync.mjs            # 抓最新 + 算信号 + 写 docs/worbuddy/
- *   node worbuddy/sync.mjs --local   # 不联网，仅用已有数据生成一次（初次部署/离线测试用）
+ *   NAV_MODE=1 node worbuddy/sync.mjs            # NAV 模式：抓净值 + 算信号 + 写 docs/feed/
+ *   node worbuddy/sync.mjs                       # 默认指数模式
+ *   node worbuddy/sync.mjs --local              # 不联网，仅用已有数据生成一次（离线测试用）
  *
- * 之后由 /opt/calendar-git-sync.sh 把 docs/worbuddy/ 与 worbuddy/ 提交并推送到 GitHub，
- * GitHub Pages 以 HTTPS 发布，苹果日历订阅 docs/worbuddy/calendar.ics 即更新。
+ * 之后由 git 提交并推送到 GitHub，GitHub Pages 以 HTTPS 发布，苹果日历订阅
+ * docs/feed/calendar.ics 即更新。
  */
 
 import { parseMarketFile } from './src/market-file-parser.mjs';
@@ -22,6 +26,7 @@ import { runRotationBacktest } from './src/backtest-engine.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 仓库根目录（worbuddy/ 的父目录）
@@ -36,6 +41,12 @@ const CODE_G = '980080';
 const CODE_V = '980081';
 const FILE_G = '980080_perf_20121231-20260902.xls';
 const FILE_V = '980081_perf_20121231-20260902.xls';
+
+// NAV 模式：实盘持有基金（东财/akshare 接口，CVM 可直连，不被反爬封）
+const NAV_MODE = process.env.NAV_MODE === '1';
+const NAV_CODE_G = '027859'; // 易方达国证成长100ETF联接C（成长腿）
+const NAV_CODE_V = '026936'; // 大成国证价值100指数C（价值腿）
+const FWD_NAV = path.join(FWD, 'close-input-nav.csv');
 
 // 真实成本下优化所得（walk-forward 4/4 稳健、短期换仓最少、回撤最优）
 const PARAMS = {
@@ -69,6 +80,10 @@ function nextDayStr(date) {
   const t = new Date(`${date}T00:00:00Z`).getTime() + 86400000;
   return new Date(t).toISOString().slice(0, 10);
 }
+function shiftDays(dateStr, n) {
+  const t = new Date(`${dateStr}T00:00:00Z`).getTime() + n * 86400000;
+  return new Date(t).toISOString().slice(0, 10);
+}
 // 下一交易日（跳过周六日；节假日未建模，沿用既有简化口径）
 function nextTradingDay(dateStr) {
   let d = new Date(`${dateStr}T00:00:00Z`).getTime() + 86400000;
@@ -88,9 +103,9 @@ const fwdPath = path.join(FWD, 'close-input.csv');
 function loadBase(code, file) {
   return parseMarketFile(path.join(DATA, file), { assetCode: code }).rows;
 }
-function loadForward() {
-  if (!fs.existsSync(fwdPath)) return [];
-  const txt = fs.readFileSync(fwdPath, 'utf8').trim();
+function loadForward(file = fwdPath) {
+  if (!fs.existsSync(file)) return [];
+  const txt = fs.readFileSync(file, 'utf8').trim();
   if (!txt) return [];
   const out = [];
   for (const line of txt.split(/\r?\n/)) {
@@ -108,7 +123,17 @@ function appendForward(date, g, v) {
   lines.push(`${date},${g},${v}`);
   fs.writeFileSync(fwdPath, lines.join('\n') + '\n');
 }
-function buildRows(forward) {
+function buildRows(forward, nav = false) {
+  if (nav) {
+    // NAV 模式：直接用净值序列（已保证 g/v 同日期对齐），不混入指数基础历史
+    const mapG = new Map(forward.map((c) => [c.date, c.g]));
+    const mapV = new Map(forward.map((c) => [c.date, c.v]));
+    const dates = [...new Set([...mapG.keys(), ...mapV.keys()])].sort();
+    return {
+      [CODE_G]: dates.map((d) => ({ date: d, price: mapG.get(d) })).filter((r) => r.price != null),
+      [CODE_V]: dates.map((d) => ({ date: d, price: mapV.get(d) })).filter((r) => r.price != null),
+    };
+  }
   const baseG = loadBase(CODE_G, FILE_G);
   const baseV = loadBase(CODE_V, FILE_V);
   const lastBase = baseG[baseG.length - 1].date;
@@ -122,13 +147,15 @@ function buildRows(forward) {
   };
   return { [CODE_G]: merge(baseG, 'g'), [CODE_V]: merge(baseV, 'v') };
 }
-function runAll(forward) {
-  const rowsByCode = buildRows(forward);
+function runAll(forward, nav = false) {
+  const rowsByCode = buildRows(forward, nav);
   const lastDate = rowsByCode[CODE_G][rowsByCode[CODE_G].length - 1].date;
+  // NAV 模式已用指数长历史对齐缩放，序列覆盖完整回测区间，直接用 BACKTEST_START
+  const bStart = BACKTEST_START;
   return runRotationBacktest({
     rowsByCode,
     parameters: PARAMS,
-    backtest_start: BACKTEST_START,
+    backtest_start: bStart,
     backtest_end: lastDate,
     initial_capital: INITIAL_CAPITAL,
     initial_position: SEED,
@@ -136,6 +163,13 @@ function runAll(forward) {
 }
 
 async function fetchNewRows() {
+  if (NAV_MODE) {
+    const py = process.env.PYTHON_BIN || '/home/ubuntu/venv_ib/bin/python';
+    const script = path.join(__dirname, 'fetch_nav.py');
+    console.log(`  ① NAV 模式：调用 fetch_nav.py 抓取 ${NAV_CODE_G}/${NAV_CODE_V} 净值…`);
+    execSync(`"${py}" "${script}"`, { stdio: 'inherit' });
+    return [];
+  }
   const baseG = loadBase(CODE_G, FILE_G);
   const lastBase = baseG[baseG.length - 1].date;
   const today = new Date().toISOString().slice(0, 10);
@@ -277,7 +311,7 @@ function buildICS(rep) {
     `当日盈亏：${rep.pnl_pct >= 0 ? '+' : ''}${rep.pnl_pct}%`,
     `累计收益：${rep.summary.total_return_pct}%（CAGR ${rep.summary.cagr_pct}%）`,
     `原因：${rep.reason}`,
-    `策略：15日相对动量轮动 · 价格指数980080/980081 · ±3pp 滞回 · 真实阶梯成本`,
+    `策略：15日相对动量轮动 · 净值027859/026936(对应指数980080/980081) · ±3pp 滞回 · 真实阶梯成本`,
   ];
   const lines = [
     'BEGIN:VCALENDAR',
@@ -356,7 +390,7 @@ function buildHTML(rep) {
 <body>
   <div class="card">
     <h1>策略A · 成长100 / 价值100 轮动</h1>
-    <div class="sub">15日相对动量 · 价格指数 980080/980081 · ±3pp 滞回 · 真实阶梯成本</div>
+    <div class="sub">15日相对动量 · 净值 027859/026936（对应指数 980080/980081）· ±3pp 滞回 · 真实阶梯成本</div>
     <div class="big">${rep.position_name}</div>
     ${badge}
     <div style="margin-top:20px">
@@ -372,7 +406,7 @@ function buildHTML(rep) {
     </div>
     <div class="reason">${rep.reason}</div>
     <button onclick="location.reload()">🔄 刷新信号</button>
-    <div class="foot">生成于 ${new Date(rep.generated_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} · 数据来源：国证指数官网</div>
+    <div class="foot">生成于 ${new Date(rep.generated_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} · 数据来源：${NAV_MODE ? '基金净值(东财/akshare) 027859/026936' : '国证指数官网'}</div>
   </div>
 </body>
 </html>`;
@@ -381,15 +415,43 @@ function buildHTML(rep) {
 async function main() {
   const localOnly = process.argv.includes('--local');
   if (!localOnly) {
-    console.log('① 抓取国证官网最新收盘…');
-    const added = await fetchNewRows();
-    if (added.length === 0) console.log('   无晚于基础历史的新交易日，沿用已有数据。');
+    if (NAV_MODE) {
+      console.log('① NAV 模式：抓取 027859/026936 净值…');
+      await fetchNewRows();
+    } else {
+      console.log('① 抓取国证官网最新收盘…');
+      const added = await fetchNewRows();
+      if (added.length === 0) console.log('   无晚于基础历史的新交易日，沿用已有数据。');
+    }
   } else {
     console.log('① 离线模式：仅用已有数据生成。');
   }
-  const forward = loadForward();
-  const res = runAll(forward);
+  const forward = loadForward(NAV_MODE ? FWD_NAV : fwdPath);
+  const res = runAll(forward, NAV_MODE);
   const rep = buildReport(res);
+
+  // NAV 模式：用持久化真实持仓状态计算换仓费，避免短净值窗口重建持仓期导致的费率误报
+  if (NAV_MODE) {
+    const statePath = path.join(FWD, 'nav-state.json');
+    let state = null;
+    try { state = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch {}
+    if (!state) {
+      // 首次运行：以已知真实状态播种（当前腿持有≥7天，与指数系统一致）
+      state = { position: rep.position, entry_date: shiftDays(rep.date, -10) };
+      fs.writeFileSync(statePath, JSON.stringify(state));
+    }
+    const heldDays = calDays(state.entry_date, rep.date);
+    const fee = feeForHoldingDays(heldDays);
+    rep.switch_fee_pct = Number(fee.toFixed(2));
+    rep.switch_fee_note = fee > 0
+      ? `⚠️ ${fee}% 短期赎回费（持有 ${heldDays.toFixed(1)} 天 <7 天）`
+      : `✅ 免赎回费（持有 ${heldDays.toFixed(1)} 天 ≥7 天）`;
+    if (rep.position !== state.position) {
+      state = { position: rep.position, entry_date: rep.date };
+      fs.writeFileSync(statePath, JSON.stringify(state));
+    }
+  }
+
   fs.writeFileSync(path.join(DIST, 'signal.json'), JSON.stringify(rep, null, 2) + '\n');
   fs.writeFileSync(path.join(DIST, 'calendar.ics'), buildICS(rep));
   fs.writeFileSync(path.join(DIST, 'index.html'), buildHTML(rep));
@@ -399,8 +461,8 @@ async function main() {
   console.log(`   D 值        : ${rep.d_pp}pp（阈值 +${rep.upper}/ ${rep.lower}）`);
   console.log(`   明日操作    : ${rep.next_action.startsWith('SWITCH') ? '🔄 切到 ' + rep.switch_to + '（' + rep.execution_date + '）' : '✅ 持有不动'}`);
   console.log(`   换仓成本    : ${rep.switch_fee_note}`);
-  console.log('\n③ 已写出 docs/worbuddy/{signal.json, calendar.ics, index.html}');
-  console.log('   下一步：用 /opt/calendar-git-sync.sh 提交并推送到 GitHub，Pages 即更新。');
+  console.log('\n③ 已写出 docs/feed/{signal.json, calendar.ics, index.html}');
+  console.log('   下一步：git 提交并推送到 GitHub，Pages 即更新。');
 }
 
 main().catch((e) => {
