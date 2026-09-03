@@ -136,7 +136,7 @@ try {
     growthResult.code === '480080' && valueResult.code === '480081'
       ? '数据口径：480080 / 480081'
       : `数据口径：${growthResult.code} / ${valueResult.code}（480080/480081 取数失败时使用 980080/980081 备用代码；备用代码为价格指数口径）`;
-  const desc = `信号交易日：${date}\n日历日期：${eventDate}\n状态：操作：${displayResult}\n\n成长100R（${growthResult.code}）：${g[date].toFixed(4)}      ${((g[date] / g[previous] - 1) * 100) >= 0 ? '+' : ''}${((g[date] / g[previous] - 1) * 100).toFixed(4)}%\n价值100R（${valueResult.code}）：${v[date].toFixed(4)}      ${((v[date] / v[previous] - 1) * 100) >= 0 ? '+' : ''}${((v[date] / v[previous] - 1) * 100).toFixed(4)}%\n${sourceLine}\n\n成长20日累计收益：${(rg * 100).toFixed(4)}%\n价值20日累计收益：${(rv * 100).toFixed(4)}%\n相对收益差：${d >= 0 ? '+' : ''}${d.toFixed(4)}pp\n\n理由：${reason}`;
+  const desc = `信号交易日：${date}\n日历日期：${eventDate}\n操作：${displayResult}\n\n成长100R（${growthResult.code}）：${g[date].toFixed(4)}      ${((g[date] / g[previous] - 1) * 100) >= 0 ? '+' : ''}${((g[date] / g[previous] - 1) * 100).toFixed(4)}%\n价值100R（${valueResult.code}）：${v[date].toFixed(4)}      ${((v[date] / v[previous] - 1) * 100) >= 0 ? '+' : ''}${((v[date] / v[previous] - 1) * 100).toFixed(4)}%\n${sourceLine}\n\n成长20日累计收益：${(rg * 100).toFixed(4)}%\n价值20日累计收益：${(rv * 100).toFixed(4)}%\n相对收益差：${d >= 0 ? '+' : ''}${d.toFixed(4)}pp\n\n理由：${reason}`;
 
   fs.writeFileSync('data/strategy-a.json', JSON.stringify([event(title, desc, eventDate)], null, 2) + '\n');
   fs.writeFileSync('data/strategy-a-state.json', JSON.stringify({
