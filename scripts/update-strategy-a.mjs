@@ -96,9 +96,7 @@ try {
   }
 
   const date = ds.at(-1);
-  const today = beijingToday();
   const eventDate = date;
-  const isStaleData = date < today;
   const previous = ds.at(-2);
   const old = ds.at(-21);
   const rg = g[date] / g[old] - 1;
@@ -106,6 +104,7 @@ try {
   const d = (rg - rv) * 100;
   const state = JSON.parse(fs.readFileSync('data/strategy-a-state.json'));
   const previousPosition = state.currentPosition;
+  const isNewSignalDate = state.lastSignalDate !== date;
 
   if (!['VALUE', 'GROWTH'].includes(previousPosition)) {
     throw Error('当前持仓状态无效');
@@ -129,26 +128,22 @@ try {
 
   const holding = targetPosition === 'GROWTH' ? '成长100R' : '价值100R';
   const displayResult = targetPosition !== previousPosition ? result : `保持当前“${holding}”持仓`;
-  const title = isStaleData
-    ? `💰 策略A-成长100R价值100R轮动：数据源未更新，沿用 ${date} 信号`
-    : `💰 策略A-成长100R价值100R轮动：${displayResult}`;
-  const reason = isStaleData
-    ? `数据源尚未更新到 ${today}，本次只记录最新可用信号交易日 ${date}，不把旧交易日信号挂到新日期。`
-    : targetPosition !== previousPosition
+  const title = `💰 策略A-成长100R价值100R轮动：${displayResult}`;
+  const reason = targetPosition !== previousPosition
       ? `成长100R的20日收益减去价值100R的20日收益，得到${d >= 0 ? '+' : ''}${d.toFixed(4)}pp。因此在下一交易日从“${previousPosition === 'VALUE' ? '价值' : '成长'}”切换至“${targetPosition === 'GROWTH' ? '成长' : '价值'}”。`
       : '因此保持当前持仓。';
   const sourceLine =
     growthResult.code === '480080' && valueResult.code === '480081'
       ? '数据口径：480080 / 480081'
       : `数据口径：${growthResult.code} / ${valueResult.code}（480080/480081 取数失败时使用 980080/980081 备用代码；备用代码为价格指数口径）`;
-  const desc = `信号交易日：${date}\n日历日期：${eventDate}\n${isStaleData ? `状态：数据源尚未更新到 ${today}，本次不产生新换仓信号；最新可用数据仍归档在 ${date}。\n\n` : ''}成长100R（${growthResult.code}）：${g[date].toFixed(4)}      ${((g[date] / g[previous] - 1) * 100) >= 0 ? '+' : ''}${((g[date] / g[previous] - 1) * 100).toFixed(4)}%\n价值100R（${valueResult.code}）：${v[date].toFixed(4)}      ${((v[date] / v[previous] - 1) * 100) >= 0 ? '+' : ''}${((v[date] / v[previous] - 1) * 100).toFixed(4)}%\n${sourceLine}\n\n成长20日累计收益：${(rg * 100).toFixed(4)}%\n价值20日累计收益：${(rv * 100).toFixed(4)}%\n相对收益差：${d >= 0 ? '+' : ''}${d.toFixed(4)}pp\n\n理由：${reason}`;
+  const desc = `信号交易日：${date}\n日历日期：${eventDate}\n状态：已生成 ${date} 当日策略信号，交易日、日历日期、状态日期一致。\n\n成长100R（${growthResult.code}）：${g[date].toFixed(4)}      ${((g[date] / g[previous] - 1) * 100) >= 0 ? '+' : ''}${((g[date] / g[previous] - 1) * 100).toFixed(4)}%\n价值100R（${valueResult.code}）：${v[date].toFixed(4)}      ${((v[date] / v[previous] - 1) * 100) >= 0 ? '+' : ''}${((v[date] / v[previous] - 1) * 100).toFixed(4)}%\n${sourceLine}\n\n成长20日累计收益：${(rg * 100).toFixed(4)}%\n价值20日累计收益：${(rv * 100).toFixed(4)}%\n相对收益差：${d >= 0 ? '+' : ''}${d.toFixed(4)}pp\n\n理由：${reason}`;
 
   fs.writeFileSync('data/strategy-a.json', JSON.stringify([event(title, desc, eventDate)], null, 2) + '\n');
   fs.writeFileSync('data/strategy-a-state.json', JSON.stringify({
     currentPosition: targetPosition,
-    tradeCount: state.tradeCount + Number(!isStaleData && targetPosition !== previousPosition),
+    tradeCount: state.tradeCount + Number(isNewSignalDate && targetPosition !== previousPosition),
     lastSignalDate: date,
-    lastResult: isStaleData ? '数据源未更新' : result,
+    lastResult: result,
   }, null, 2) + '\n');
   console.log(title);
   console.log(sourceLine);
