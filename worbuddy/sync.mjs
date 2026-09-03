@@ -232,6 +232,34 @@ function buildReport(res) {
 function icsEscape(s) {
   return String(s).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;');
 }
+// RFC 5545 硬性要求：物理行 ≤75 octets；续行以空格(0x20)开头、≤74 octets；
+// 且绝不可在 UTF-8 多字节字符中间切断（否则中文会乱码 + 解析失败）。
+// 苹果日历(CalendarKit)严格遵循此规则，未折行的超长行会被直接拒收（"验证失败"）。
+function foldLine(line) {
+  const enc = Buffer.from(line, 'utf8');
+  if (enc.length <= 75) return line;
+  // 贪心折行：逐字符累计 UTF-8 字节，加入下一个完整字符会超限额（首行75/续行74含前导空格）即折行。
+  // 绝不切断多字节字符，续行以单个空格(0x20)开头。数学上保证任何物理行 ≤75 octets。
+  const lines = [];
+  let cur = Buffer.alloc(0);
+  let first = true;
+  let i = 0;
+  while (i < enc.length) {
+    let j = i + 1;
+    while (j < enc.length && (enc[j] & 0xc0) === 0x80) j++; // 跳过 UTF-8 续字节，锁定完整字符
+    const chLen = j - i;
+    const limit = first ? 75 : 74; // 续行首字节是空格，留 1 字节
+    if (cur.length + (first ? 0 : 1) + chLen > limit) {
+      lines.push((first ? '' : ' ') + cur.toString('utf8'));
+      first = false;
+      cur = Buffer.alloc(0);
+    }
+    cur = Buffer.concat([cur, enc.slice(i, j)]);
+    i = j;
+  }
+  if (cur.length > 0) lines.push((first ? '' : ' ') + cur.toString('utf8'));
+  return lines.join('\r\n');
+}
 function buildICS(rep) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
   const evtDate = nextTradingDay(rep.date); // 事件落在下一交易日 09:00，确保苹果刷新时仍在未来
@@ -251,17 +279,25 @@ function buildICS(rep) {
     `原因：${rep.reason}`,
     `策略：15日相对动量轮动 · 价格指数980080/980081 · ±3pp 滞回 · 真实阶梯成本`,
   ];
-  return [
+  const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//WorkBuddy//StrategyA//CN',
     'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
     'X-WR-CALNAME:策略A·WorkBuddy轮动(15d/±3pp)',
     'X-WR-TIMEZONE:Asia/Shanghai',
     'X-PUBLISHED-TTL:PT15M',
     'REFRESH-INTERVAL;VALUE=DURATION:PT15M',
     'LAST-MODIFIED:' + stamp,
+    'BEGIN:VTIMEZONE',
+    'TZID:Asia/Shanghai',
+    'BEGIN:STANDARD',
+    'DTSTART:19700101T000000',
+    'TZOFFSETFROM:+0800',
+    'TZOFFSETTO:+0800',
+    'TZNAME:CST',
+    'END:STANDARD',
+    'END:VTIMEZONE',
     'BEGIN:VEVENT',
     'UID:strategy-a-worbuddy@value-growth-calendar',
     'DTSTAMP:' + stamp,
@@ -279,8 +315,10 @@ function buildICS(rep) {
     'END:VALARM',
     'END:VEVENT',
     'END:VCALENDAR',
-    '',
-  ].join('\r\n');
+  ];
+  // 逐行做 RFC 5545 折行（含中文按 UTF-8 字节数计算），续行以空格开头
+  const body = lines.map((l) => foldLine(l)).join('\r\n');
+  return body + '\r\n';
 }
 
 function buildHTML(rep) {
