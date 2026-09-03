@@ -28,7 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DATA = path.join(ROOT, 'worbuddy', '价值成长 100 数据');
 const FWD = path.join(ROOT, 'worbuddy', 'forward');
-const DIST = path.join(ROOT, 'feed'); // Pages 实际发布仓库根目录（非 /docs），产物须置于根下
+const DIST = path.join(ROOT, 'docs', 'feed'); // Pages 源为 /docs（标准映射 docs/X → 站点 /X）
 fs.mkdirSync(FWD, { recursive: true });
 fs.mkdirSync(DIST, { recursive: true });
 
