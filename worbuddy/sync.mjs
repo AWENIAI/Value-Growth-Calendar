@@ -262,9 +262,9 @@ function foldLine(line) {
 }
 function buildICS(rep) {
   const stamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  const evtDate = nextTradingDay(rep.date); // 事件落在下一交易日 09:00，确保苹果刷新时仍在未来
-  const dtStart = `${evtDate.replace(/-/g, '')}T090000`;
-  const dtEnd = `${evtDate.replace(/-/g, '')}T090500`;
+  const evtDate = rep.date; // 事件落在数据日期当天（用户要求：日历事件对应数据日期，而非下一交易日）
+  const dtStart = `${evtDate.replace(/-/g, '')}T180000`; // 当天收盘后 18:00
+  const dtEnd = `${evtDate.replace(/-/g, '')}T183000`;
   const summary = rep.next_action.startsWith('SWITCH')
     ? `策略A·持${rep.position_name}｜${evtDate} 切${rep.switch_to}`
     : `策略A·持${rep.position_name}`;
