@@ -1,34 +1,34 @@
 {
-  "date": "2026-09-03",
+  "date": "2026-09-04",
   "position": "VALUE",
   "position_name": "价值100",
-  "changed_today": true,
-  "d_pp": -4.59,
+  "changed_today": false,
+  "d_pp": -9.68,
   "upper": 3,
   "lower": -3,
   "next_action": "HOLD",
   "switch_to": null,
   "execution_date": null,
   "switch_fee_pct": 1.5,
-  "switch_fee_note": "⚠️ 1.5% 短期赎回费（持有 1.0 天 <7 天）",
-  "pnl_pct": 0.38,
-  "equity": 3801486.73,
-  "reason": "D=-4.59pp，未突破阈值（-3/3pp），维持价值100不动。",
+  "switch_fee_note": "⚠️ 1.5% 短期赎回费（持有 2.0 天 <7 天）",
+  "pnl_pct": 0.6,
+  "equity": 3824438.84,
+  "reason": "D=-9.68pp，未突破阈值（-3/3pp），维持价值100不动。",
   "summary": {
-    "total_return_pct": 3701.49,
-    "cagr_pct": 30.65,
+    "total_return_pct": 3724.44,
+    "cagr_pct": 30.7,
     "max_drawdown_pct": -48.16,
     "sharpe_ratio": 1.16,
     "trade_count": 100,
     "final_position": "价值100"
   },
-  "generated_at": "2026-09-04T10:41:42.000Z",
+  "generated_at": "2026-09-04T12:13:47.261Z",
   "freshness": {
     "today_cn": "2026-09-04",
-    "data_date": "2026-09-03",
-    "stale": true,
+    "data_date": "2026-09-04",
+    "stale": false,
     "expect_today": true,
-    "severity": "WARN",
-    "note": "数据滞后：官网最新仅到 2026-09-03，今日 2026-09-04 收盘数据尚未发布。日历事件落在 2026-09-03，今日日历内不会有新事件。"
+    "severity": "OK",
+    "note": "数据为 2026-09-04 当日收盘，新鲜。"
   }
 }
