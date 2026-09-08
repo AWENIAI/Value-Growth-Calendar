@@ -22,13 +22,13 @@
     "trade_count": 100,
     "final_position": "价值100"
   },
-  "generated_at": "2026-09-07T12:30:27.435Z",
+  "generated_at": "2026-09-08T10:00:32.640Z",
   "freshness": {
-    "today_cn": "2026-09-07",
+    "today_cn": "2026-09-08",
     "data_date": "2026-09-07",
-    "stale": false,
+    "stale": true,
     "expect_today": true,
-    "severity": "OK",
-    "note": "数据为 2026-09-07 当日收盘，新鲜。"
+    "severity": "WARN",
+    "note": "数据滞后：官网最新仅到 2026-09-07，今日 2026-09-08 收盘数据尚未发布。日历事件落在 2026-09-07，今日日历内不会有新事件。"
   }
 }
