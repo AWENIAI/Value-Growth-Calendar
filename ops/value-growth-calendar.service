@@ -1,0 +1,11 @@
+[Unit]
+Description=Update Value Growth Calendar ICS
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/Value-Growth-Calendar
+Environment=AWEN_CALENDAR_AUTOMATION=1
+ExecStart=/opt/Value-Growth-Calendar/run-update.sh
