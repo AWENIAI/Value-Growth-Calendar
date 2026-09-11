@@ -3,5 +3,9 @@
   "private": true,
   "type": "module",
   "engines": { "node": ">=20" },
-  "scripts": { "update-strategy-a": "node scripts/update-strategy-a.mjs", "generate": "node scripts/generate-calendar.mjs" }
+  "scripts": {
+    "update-strategy-a": "node scripts/update-strategy-a.mjs",
+    "generate": "node scripts/generate-calendar.mjs",
+    "verify": "node scripts/verify-calendar.mjs"
+  }
 }

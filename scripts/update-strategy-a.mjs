@@ -25,6 +25,12 @@ const beijingToday = () => {
   return dict.year + '-' + dict.month + '-' + dict.day;
 };
 
+const expectedSignalDate = process.env.EXPECTED_SIGNAL_DATE || beijingToday();
+
+if (!/^\d{4}-\d{2}-\d{2}$/.test(expectedSignalDate)) {
+  throw Error(`EXPECTED_SIGNAL_DATE 格式错误：${expectedSignalDate}`);
+}
+
 const get = async code => {
   const endDate = new Date().toISOString().slice(0, 10);
   const startDate = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
@@ -96,6 +102,11 @@ try {
   }
 
   const date = ds.at(-1);
+
+  if (date !== expectedSignalDate) {
+    throw Error(`数据日期硬校验失败：要求 ${expectedSignalDate}，数据源最新共同交易日为 ${date}`);
+  }
+
   const eventDate = date;
   const previous = ds.at(-2);
   const old = ds.at(-21);
@@ -148,12 +159,7 @@ try {
   console.log(title);
   console.log(sourceLine);
 } catch (error) {
-  const date = beijingToday();
-  fs.writeFileSync('data/strategy-a.json', JSON.stringify([event(
-    '💰 策略A-成长100R价值100R轮动：数据错误无结果',
-    `结果：数据错误无结果\n\n数据口径：480080 / 480081；备用代码：980080 / 980081\n\n理由：${error.message}`,
-    date,
-  )], null, 2) + '\n');
+  // 保留上一次有效日历，禁止用错误事件覆盖真实交易信号。
   console.error(error.message);
   process.exitCode = 1;
 }

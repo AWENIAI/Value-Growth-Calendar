@@ -13,6 +13,7 @@ git merge --ff-only origin/main
 
 npm run update-strategy-a
 npm run generate
+npm run verify -- "${EXPECTED_SIGNAL_DATE:-$(TZ=Asia/Shanghai date +%F)}"
 
 /opt/Value-Growth-Calendar/ops/calendar-git-sync.sh /opt/Value-Growth-Calendar \
   "chore: auto-sync value growth calendar update" \
@@ -21,9 +22,14 @@ npm run generate
   docs/GLOBAL_KEY.ics \
   public/GLOBAL_KEY.ics \
   public/calendar/GLOBAL_KEY.ics \
+  scripts/update-strategy-a.mjs \
+  scripts/verify-calendar.mjs \
+  package.json \
+  CHANGELOG.md \
   docs/feed/calendar.ics \
   docs/feed/signal.json \
   run-update.sh \
   ops/calendar-git-sync.sh \
   ops/value-growth-calendar.service \
+  ops/value-growth-calendar.timer \
   .githooks/pre-commit

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Value Growth Calendar updater on weekdays at Beijing 18:00 and 21:00
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 18:00:00
+OnCalendar=Mon..Fri *-*-* 21:00:00
+Persistent=true
+Unit=value-growth-calendar.service
+
+[Install]
+WantedBy=timers.target
