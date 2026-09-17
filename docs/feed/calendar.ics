@@ -6,7 +6,7 @@ X-WR-CALNAME:策略A·WorkBuddy轮动(15d/±3pp)
 X-WR-TIMEZONE:Asia/Shanghai
 X-PUBLISHED-TTL:PT15M
 REFRESH-INTERVAL;VALUE=DURATION:PT15M
-LAST-MODIFIED:20260915T100111Z
+LAST-MODIFIED:20260917T100143Z
 BEGIN:VTIMEZONE
 TZID:Asia/Shanghai
 BEGIN:STANDARD
@@ -18,25 +18,25 @@ END:STANDARD
 END:VTIMEZONE
 BEGIN:VEVENT
 UID:strategy-a-worbuddy@value-growth-calendar
-DTSTAMP:20260915T100111Z
-DTSTART;TZID=Asia/Shanghai:20260914T180000
-DTEND;TZID=Asia/Shanghai:20260914T183000
+DTSTAMP:20260917T100143Z
+DTSTART;TZID=Asia/Shanghai:20260916T180000
+DTEND;TZID=Asia/Shanghai:20260916T183000
 LOCATION:中国
 TRANSP:TRANSPARENT
 CATEGORIES:策略A
-SUMMARY:策略A·持价值100
-DESCRIPTION:⚠️ 注意：国证官网尚未发布 2026-09-15 收盘数
- 据，本条为 2026-09-14 的信号\n数据日期：2026-09-14\n当前
- 持仓：价值100\nD值：2.24pp（阈值 +3/ -3）\n下一交易日操
- 作：持有不动\n换仓成本：✅ 免赎回费（持有 12.0 天 ≥
- 7 天）\n当日盈亏：-0.06%\n累计收益：3672.18%（CAGR 30.5%）\
- n原因：D=2.24pp，未突破阈值（-3/3pp），维持价值100不动
- 。\n策略：15日相对动量轮动 · 净值027859/026936(对应指数
- 980080/980081) · ±3pp 滞回 · 真实阶梯成本
+SUMMARY:策略A·持成长100
+DESCRIPTION:⚠️ 注意：国证官网尚未发布 2026-09-17 收盘数
+ 据，本条为 2026-09-16 的信号\n数据日期：2026-09-16\n当前
+ 持仓：成长100\nD值：7.37pp（阈值 +3/ -3）\n下一交易日操
+ 作：持有不动\n换仓成本：⚠️ 1.5% 短期赎回费（持有 1
+ .0 天 <7 天）\n当日盈亏：+3.68%\n累计收益：3763.93%（CAGR 3
+ 0.72%）\n原因：D=7.37pp，未突破阈值（-3/3pp），维持成长1
+ 00不动。\n策略：15日相对动量轮动 · 净值027859/026936(对
+ 应指数980080/980081) · ±3pp 滞回 · 真实阶梯成本
 BEGIN:VALARM
 TRIGGER;RELATED=START:-PT30M
 ACTION:DISPLAY
-DESCRIPTION:策略A·持价值100
+DESCRIPTION:策略A·持成长100
 END:VALARM
 END:VEVENT
 END:VCALENDAR
