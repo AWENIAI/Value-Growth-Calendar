@@ -22,13 +22,13 @@
     "trade_count": 101,
     "final_position": "成长100"
   },
-  "generated_at": "2026-09-17T12:31:52.301Z",
+  "generated_at": "2026-09-18T10:02:02.542Z",
   "freshness": {
-    "today_cn": "2026-09-17",
+    "today_cn": "2026-09-18",
     "data_date": "2026-09-17",
-    "stale": false,
+    "stale": true,
     "expect_today": true,
-    "severity": "OK",
-    "note": "数据为 2026-09-17 当日收盘，新鲜。"
+    "severity": "WARN",
+    "note": "数据滞后：官网最新仅到 2026-09-17，今日 2026-09-18 收盘数据尚未发布。日历事件落在 2026-09-17，今日日历内不会有新事件。"
   }
 }
